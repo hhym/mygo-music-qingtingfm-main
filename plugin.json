@@ -1,7 +1,7 @@
 {
   "id": "qingting",
   "name": "蜻蜓FM",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "minAppVersion": "0.1.8",
   "main": "index.js",
   "playback": "stream",
@@ -48,6 +48,11 @@
       "title": "排行榜",
       "page": "rank",
       "icon": "chart"
+    },
+    {
+      "title": "历史",
+      "page": "history",
+      "icon": "calendar"
     },
     {
       "builtin": "shows"

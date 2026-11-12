@@ -208,6 +208,7 @@ export async function home() {
 
 export async function browse({ page }) {
   if (page === "me") return myPage();
+  if (page === "history") return historyPage();
 
   if (page === "rank") {
     const d = await get("/rank/hotSaleWeekly");
@@ -330,7 +331,7 @@ export function liked({ offset }) {
 
 export function isLiked({ ids }) {
   const liked = new Set(likedIds());
-  return Object.fromEntries(ids.map((id) => [id, liked.has(String(id))]));
+  return Object.fromEntries(ids.map((id) => [String(id), liked.has(String(id))]));
 }
 
 function toggled(key, id, on) {
@@ -346,12 +347,16 @@ export function like({ id, on }) {
 }
 export const likeEpisode = like;
 
+// A play is remembered with when it happened: the history page groups by day.
+const HISTORY_MAX = 100;
+
 export function played({ id }) {
   const track = cached(id);
   if (!track) return;
-  const recent = load("recent", []).filter((t) => t.id !== id);
-  recent.unshift(track);
-  save("recent", recent.slice(0, 50));
+  const entry = { ...track, at: Date.now() };
+  const recent = load("recent", []).filter((t) => t && t.id !== id);
+  recent.unshift(entry);
+  save("recent", recent.slice(0, HISTORY_MAX));
 }
 
 export function recent() {
@@ -476,6 +481,44 @@ export function account() {
     name: s.name || t("蜻蜓FM listener"),
     imageUrl: s.imageUrl,
     page: "me",
+  };
+}
+
+// The history page: what was played lately, one section per day, newest first.
+// The app has no page of its own for a source's plays, so this is a browse page.
+const DAY = 86400000;
+const startOfDay = (ts) => {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+function dayLabel(at) {
+  if (!at) return t("Earlier");
+  const day = startOfDay(at);
+  const today = startOfDay(Date.now());
+  if (day >= today) return t("Today");
+  if (day >= today - DAY) return t("Yesterday");
+  const d = new Date(day);
+  const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function historyPage() {
+  const items = [...load("recent", [])]
+    .filter(Boolean)
+    .sort((a, b) => (b.at || 0) - (a.at || 0));
+  const sections = [];
+  for (const it of items) {
+    const title = dayLabel(it.at);
+    const last = sections[sections.length - 1];
+    if (last && last.title === title) last.tracks.push(it);
+    else sections.push({ title, tracks: [it] });
+  }
+  return {
+    title: t("History"),
+    subtitle: items.length ? `${t("Recently played")} · ${items.length}` : t("Nothing played yet"),
+    sections,
   };
 }
 
