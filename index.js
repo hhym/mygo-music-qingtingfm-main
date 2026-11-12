@@ -24,6 +24,20 @@ const load = (key, fallback) => {
 };
 const save = (key, value) => host.storage.set(key, value);
 
+// Signing in with the app's QR code leaves an access token, and the mobile
+// site sends it back as cookies, which is what the webapi reads.
+const USER = "https://user.qtfm.cn";
+const session = () => load("session", null);
+
+function headers() {
+  const h = { "User-Agent": UA };
+  const s = session();
+  if (s && s.access_token) {
+    h.Cookie = `access_token=${s.access_token}; qingting_id=${s.qingting_id}`;
+  }
+  return h;
+}
+
 // Every request takes a page from webapi.qingting.fm, which answers JSON.
 async function get(path, params) {
   const url = new URL(API + path);
@@ -31,7 +45,7 @@ async function get(path, params) {
     if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
   }
   const res = await fetch(url.toString(), {
-    headers: { "User-Agent": UA, Referer: "https://m.qingting.fm/" },
+    headers: { ...headers(), Referer: "https://m.qingting.fm/" },
   });
   const text = await res.text();
   if (!res.ok) throw fail("unavailable", `${url.pathname} ${res.status}`);
@@ -193,6 +207,8 @@ export async function home() {
 }
 
 export async function browse({ page }) {
+  if (page === "me") return myPage();
+
   if (page === "rank") {
     const d = await get("/rank/hotSaleWeekly");
     return {
@@ -340,6 +356,146 @@ export function played({ id }) {
 
 export function recent() {
   return load("recent", []);
+}
+
+// ---- signing in, by scanning a code with the 蜻蜓FM app --------------------
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// What the code holds, which the app's scan page answers: the web client
+// builds the same URL from the code id, and the picture the service offers
+// decodes to it.
+const qrText = (codeId) =>
+  `https://scan.qtfm.cn/home?title=授权登录&requires_login=true&code_id=${codeId}`;
+
+// The generate call sets qr_skey, a cookie the status call asks for. A plugin
+// keeps no cookie jar, so it's read from the answer and sent along.
+function skeyOf(res) {
+  const many = res.headers && typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
+  const raw = many.length ? many.join("\n") : (res.headers && res.headers.get("set-cookie")) || "";
+  const m = /qr_skey=([^;,\s]+)/.exec(raw);
+  return m ? m[1] : "";
+}
+
+async function qrStatus(codeId, skey) {
+  const res = await fetch(
+    `${USER}/u2/api/v4/users/qrcode/status_query?code_id=${encodeURIComponent(codeId)}`,
+    { headers: { "User-Agent": UA, Cookie: `qr_skey=${skey}` } },
+  );
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw fail("signIn", text.slice(0, 120));
+  }
+}
+
+// The profile is one more call the web client makes; when it doesn't answer,
+// the id is a good enough name.
+async function profileOf(s) {
+  try {
+    const res = await fetch(
+      `${USER}/u2/api/v4/user/${s.qingting_id}?mode=vital&device_id=MOBILESITE&qingting_id=${s.qingting_id}`,
+      { headers: { ...headers(), authuser: s.access_token } },
+    );
+    const d = await res.json();
+    const u = d && (d.data || d.user);
+    if (u) return { name: u.username || u.nickname || u.name || "", imageUrl: image(u.avatar) };
+  } catch {
+    // Not signed in far enough to ask, or the route answered nothing.
+  }
+  return null;
+}
+
+export async function signIn() {
+  if (typeof host.signInPrompt !== "function") throw fail("unsupported", t("No QR window"));
+  if (session() && session().access_token) return;
+
+  const res = await fetch(`${USER}/u2/api/v4/users/qrcode/generate`, { headers: { "User-Agent": UA } });
+  const body = await res.json();
+  if (!body || body.errorno !== 0 || !body.data || !body.data.code_id) {
+    throw fail("signIn", (body && body.errormsg) || t("Couldn't get a code"));
+  }
+  const codeId = body.data.code_id;
+  const skey = skeyOf(res);
+  if (!skey) throw fail("signIn", t("The sign-in service gave no key"));
+
+  host.signInPrompt({ qr: qrText(codeId), text: t("Scan with the 蜻蜓FM app") });
+
+  // The key lasts eight minutes; the window says so and starts again after.
+  const deadline = Date.now() + 5 * 60 * 1000;
+  let scanning = false;
+  while (Date.now() < deadline) {
+    await sleep(2000);
+    let st;
+    try {
+      st = await qrStatus(codeId, skey);
+    } catch {
+      continue; // a hiccup of the network isn't the end of the sign-in
+    }
+    if (st && st.errorno === 200) break; // expired
+    if (!st || st.errorno !== 0 || !st.data) continue;
+    const status = st.data.qrcode_status;
+    if (status === "scanning" && !scanning) {
+      scanning = true;
+      host.signInPrompt({ qr: qrText(codeId), text: t("Scanned — confirm it on your phone") });
+      continue;
+    }
+    if (status !== "authorize") continue;
+
+    const data = st.data;
+    if (!data.access_token) break;
+    const s = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || "",
+      qingting_id: String(data.qingting_id || ""),
+      name: data.nickname || data.username || "",
+      expires: Number(data.expires_in || 0) ? Date.now() + Number(data.expires_in) * 1000 : 0,
+    };
+    const profile = await profileOf(s);
+    if (profile) {
+      if (profile.name) s.name = profile.name;
+      if (profile.imageUrl) s.imageUrl = profile.imageUrl;
+    }
+    save("session", s);
+    return;
+  }
+
+  throw fail("signIn", t("The code has expired. Try again."));
+}
+
+export function signOut() {
+  host.storage.remove("session");
+}
+
+export function account() {
+  const s = session();
+  if (!s || !s.access_token) return null;
+  return {
+    id: String(s.qingting_id || ""),
+    name: s.name || t("蜻蜓FM listener"),
+    imageUrl: s.imageUrl,
+    page: "me",
+  };
+}
+
+// My Page: who's signed in, the channels kept here, and the episodes liked.
+function myPage() {
+  const s = session();
+  if (!s || !s.access_token) throw fail("signIn", t("Sign in to see your page"));
+
+  const sections = [];
+  const shows = load("shows", []).map((x) => ({ ...x, subscribed: true }));
+  if (shows.length) sections.push({ title: t("Subscribed"), shows });
+  const tracks = load("liked", []).map(cached).filter(Boolean);
+  if (tracks.length) sections.push({ title: t("Liked episodes"), tracks });
+
+  return {
+    title: s.name || t("My 蜻蜓FM"),
+    subtitle: s.qingting_id ? `${t("蜻蜓FM account")} ${s.qingting_id}` : undefined,
+    imageUrl: s.imageUrl,
+    sections,
+  };
 }
 
 // 蜻蜓FM serves its audio as HE-AAC (SBR), which the app's AAC decoder can't
