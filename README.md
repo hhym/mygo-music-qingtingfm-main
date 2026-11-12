@@ -42,7 +42,7 @@ plugins/qingting/
 | `stream` | `channels/{cid}/programs/{pid}` | 每次播放现取签名地址，再交给 ffmpeg 转成应用能解的 AAC-LC，落到插件数据目录 |
 | `like` / `likeEpisode` / `isLiked` / `liked` | 本地存储 | 收藏的节目记在插件自己的 storage 里 |
 | `played` / `recent` | 本地存储 | 最近播放 100 期，带播放时间，「历史」页按天分组 |
-| `browse` 的 `history` 页 | 本地存储 | 侧边栏「历史」：今天 / 昨天 / 日期 分组的播放记录 |
+| `browse` 的 `history` 页 | 本地存储 | 侧边栏「历史」：今天 / 昨天 / 日期 分组的播放记录，顶上有「清空历史记录」入口 |
 | `show` 的 `episodeCount` | `program_count` | 频道里的节目总数 |
 | `signIn` / `signOut` / `account` / `browse` 的 `me` 页 | `user.qtfm.cn` 扫码登录 | 见下面「扫码登录」 |
 | `stations` / `stationNext` / `browse` 的 `radio`、`radio/{地区ID}` 页 | `radio`、`radiopage/list/{地区}`、`lhttp-hw.qtfm.cn` | 广播电台，直播 MP3 直连不转码，见下面「广播电台」 |
@@ -71,7 +71,8 @@ plugins/qingting/
 - 今天、昨天，再往前按日期（`2026-11-10` 这种）各一节，最老的是没有时间戳的旧记录（归到「更早」）。
 - 每期点一下就重新播放（`stream` 会现取签名地址并重新转码/命中槽位）。
 - 记录来自应用的 `played` 回调，所以「播过」以应用实际开始播放为准，暂停、切歌都会各记一次；同一期重复播放只保留最新一条并挪到最前。
-- 数据只在本机（插件的 storage 里），不上传；目前没有「清空历史」按钮，想清就删插件数据目录里的存储，或直接卸载重装。
+- 数据只在本机（插件的 storage 里），不上传。
+- 列表顶上有一条「清空历史记录」：点进去是一页确认，再点「确认清空」才真的删掉，单独点一下不会误清。清空只删播放记录，不动收藏和订阅。
 
 ## 扫码登录
 
@@ -174,7 +175,6 @@ ffmpeg -i <签名 m4a> -vn -c:a aac -b:a 64k -movflags +faststart <数据目录>
 - **直播电台**：只有「广播」页里那些（MP3 直连）；直播的节目单只有当前一段（`current`），历史节目单没做。
 - 蜻蜓的 API 没有歌词和评论，所以插件没有 `lyrics`、`comments`。
 - 频道节目列表只有 `player/channels/{id}/pages/{n}` 可分页，`channels/{id}/programs` 永远只给最新 30 期，所以插件用前者。
-- 历史最多存 100 条，满了就从最老的开始丢；旧版本留下的记录没有时间，会统一归到「更早」。
 - 这是非官方接口，蜻蜓改字段或加签名时插件需要跟着改。
 - 扫码登录是网页版的接口，扫码、确认这两步动作得在手机上完成（本应用里只显示二维码和提示）。
 
