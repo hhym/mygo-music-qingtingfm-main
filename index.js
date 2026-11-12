@@ -209,6 +209,10 @@ export async function home() {
 export async function browse({ page }) {
   if (page === "me") return myPage();
   if (page === "history") return historyPage();
+  if (page === "radio") return radioPage();
+
+  const region = /^radio\/(\d+)$/.exec(page || "");
+  if (region) return regionPage(region[1]);
 
   if (page === "rank") {
     const d = await get("/rank/hotSaleWeekly");
@@ -522,6 +526,107 @@ function historyPage() {
   };
 }
 
+// ---- live radio, the 广播 the app keeps playing without end -----------------
+
+// A station plays as one endless track: the 64k MP3 the lhttp host serves.
+// The path needs no signature, so it's built straight from the channel id.
+const LIVE = "https://lhttp-hw.qtfm.cn";
+const liveURL = (id) => `${LIVE}/live/${id}/64k.mp3?app_id=web`;
+
+function toStation(c) {
+  const id = String((c && (c.id ?? c.content_id)) ?? "");
+  if (!/^\d+$/.test(id)) return null;
+  return {
+    id,
+    name: c.name || c.title || t("Untitled"),
+    description: plain(c.desc || c.description),
+    imageUrl: image(c.cover),
+  };
+}
+
+// The sidebar's radio page: the ones played most, then every region to browse.
+export async function stations() {
+  const [hot, net] = await Promise.all([
+    get("/radio").catch(() => ({ channels: [] })),
+    get("/radiopage/list/407").catch(() => ({ radioList: [] })),
+  ]);
+  const all = [...((hot && hot.channels) || []), ...((net && net.radioList) || [])]
+    .map(toStation)
+    .filter(Boolean);
+  const seen = new Set();
+  return all.filter((s) => (seen.has(s.id) ? false : (seen.add(s.id), true)));
+}
+
+// What a station gives the player: the stream, under the programme on air.
+export async function stationNext({ id }) {
+  const cid = String(id || "");
+  if (!/^\d+$/.test(cid)) throw fail("unavailable", t("No such station"));
+
+  let name = "";
+  let cover = "";
+  let title = "";
+  try {
+    const d = await get(`/radio/channels/${cid}/from/${Math.floor(Date.now() / 1000)}`);
+    const ch = d && d.channelInfo;
+    const cur = d && d.current;
+    if (ch) {
+      name = ch.name || "";
+      cover = ch.cover || "";
+    }
+    if (cur) title = cur.title || "";
+  } catch {
+    // A station that doesn't answer still plays; it just goes unnamed.
+  }
+
+  // The live stream is one track that never ends, so the app asks for no more.
+  return [
+    {
+      id: `live:${cid}`,
+      name: title || name || t("On air"),
+      album: { id: cid, name: name || "", imageUrl: image(cover) },
+      duration: 0,
+      description: t("Live radio"),
+    },
+  ];
+}
+
+// The regions a station is in, from the radio filters.
+async function regions() {
+  const d = await get("/radio/filter");
+  return ((d && d.regionsRes) || []).filter((r) => r && r.id);
+}
+
+async function radioPage() {
+  const hot = await get("/radio").catch(() => null);
+  const sections = [];
+  const list = ((hot && hot.channels) || []).map(toStation).filter(Boolean);
+  if (list.length) sections.push({ title: t("Popular stations"), stations: list });
+
+  const rs = await regions();
+  if (rs.length) {
+    sections.push({
+      title: t("By region"),
+      links: rs.map((r) => ({ title: r.title, page: `radio/${r.id}` })),
+    });
+  }
+
+  return { title: t("Radio"), sections };
+}
+
+async function regionPage(id) {
+  const d = await get(`/radiopage/list/${id}`);
+  const list = ((d && d.radioList) || []).map(toStation).filter(Boolean);
+  if (!list.length) throw fail("unavailable", t("No stations here"));
+
+  let title = t("Radio");
+  try {
+    const r = (await regions()).find((x) => String(x.id) === String(id));
+    if (r) title = r.title;
+  } catch {}
+
+  return { title, sections: [{ title: t("Stations"), stations: list }] };
+}
+
 // My Page: who's signed in, the channels kept here, and the episodes liked.
 function myPage() {
   const s = session();
@@ -652,7 +757,16 @@ async function transcode(url, path) {
 // The audio URL is signed and short-lived, so it's asked for each time the
 // episode plays. It answers with a redirect to the file itself.
 export async function stream({ id }) {
-  const [channelId, programId] = String(id).split(":");
+  const raw = String(id || "");
+
+  // A station's track is a live stream that never ends, already AAC-free MP3.
+  if (raw.startsWith("live:")) {
+    const cid = raw.slice(5);
+    if (!/^\d+$/.test(cid)) throw fail("unavailable", t("No such station"));
+    return { url: liveURL(cid), type: "mp3" };
+  }
+
+  const [channelId, programId] = raw.split(":");
   if (!channelId || !programId) throw fail("unavailable", t("No such episode"));
 
   const d = await get(`/channels/${channelId}/programs/${programId}`);
