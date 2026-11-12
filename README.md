@@ -45,8 +45,24 @@ plugins/qingting/
 | `browse` 的 `history` 页 | 本地存储 | 侧边栏「历史」：今天 / 昨天 / 日期 分组的播放记录 |
 | `show` 的 `episodeCount` | `program_count` | 频道里的节目总数 |
 | `signIn` / `signOut` / `account` / `browse` 的 `me` 页 | `user.qtfm.cn` 扫码登录 | 见下面「扫码登录」 |
+| `stations` / `stationNext` / `browse` 的 `radio`、`radio/{地区ID}` 页 | `radio`、`radiopage/list/{地区}`、`lhttp-hw.qtfm.cn` | 广播电台，直播 MP3 直连不转码，见下面「广播电台」 |
 
-专辑、艺人、歌单、电台、评论、歌词这些蜻蜓FM 没有对应东西的接口一律不导出，应用会自动隐藏对应入口。
+专辑、艺人、歌单、评论、歌词这些蜻蜓FM 没有对应东西的接口一律不导出，应用会自动隐藏对应入口。
+
+## 广播电台
+
+侧边栏「广播」页（`radio`）：
+
+- 上半是热门电台（`/radio` 的 `channels`），点一下就开播。
+- 下半「按地区」列出所有省市（`/radio/filter` 的 `regionsRes`），点进去是 `radio/{地区ID}` 页，用 `/radiopage/list/{地区ID}` 取当地的电台（广西这种能取到 10 个，网络台 20 个）。
+
+播放走应用自己的电台模式：
+
+- `stations()` 给出频道 ID 列表（热门 10 个 + 网络台 20 个，去重），应用把它们排成卡片/网格。
+- 选中一个电台时，应用先调 `stationNext({id})` 取「下一段」，插件返回一条**不会结束的曲目**：`id` 是 `live:{频道ID}`，名字取该台此刻正在播的节目名（`radio/channels/{id}/from/{now}` 的 `current.title`），`duration` 为 0。
+- 应用拿这条去调 `stream({id})`，插件回 `{ url: https://lhttp-hw.qtfm.cn/live/{频道ID}/64k.mp3?app_id=web, type: "mp3" }`。
+
+为什么不用转码：蜻蜓直播推的是 **MP3 64kbps / 48kHz 立体声**（不是 HE-AAC），应用自己就能解，直接把流地址交出去即可，也不会因为转码把直播变成一段一段的文件。这个地址实测不需要签名（网页版会带一个 `sign` 参数，去掉照样 200），所以插件只带了 `app_id=web`。
 
 ## 历史记录
 
@@ -86,6 +102,7 @@ plugins/qingting/
 
 - **频道 → Show**：`id` 用频道数字 ID，`name` 是频道名，`episodeCount` 是 `program_count`，`publisher` 尽量从 `podcasters` 里取主播名。
 - **节目 → Track**：`id` 写成 `频道ID:节目ID`，因为蜻蜓的播放接口要同时要这两个 ID；`duration` 单位是毫秒（接口给的是秒），`showId` 指向频道，`url` 指回 `m.qingting.fm` 的网页。
+- **电台 → Station / Track**：`id` 用直播频道 ID；播放时 `stationNext` 给一条 `live:{ID}` 的曲目，`stream` 只回 MP3 流地址。
 - 图片 URL 上常带 `!200` 这类缩略后缀，插件会把后缀去掉拿原图，交给应用自己按需缩放。
 
 ## 用到的接口
@@ -103,8 +120,14 @@ plugins/qingting/
 | `/channels/{channelId}/programs/{programId}` | 单期详情，含 `programInfo.audioUrl` |
 | `/search/keyword/{kw}?page=n` | 搜索：`all` / `channels` / `programs` / `podcasters` / `live` |
 | `/search/layer?keyword=` | 热门搜索词 |
+| `/radio` | 广播：`channels`（热门电台）、`categories` |
+| `/radio/filter` | 广播地区列表：`regionsRes`（32 个省市，北京 3、广西 239、网络台 407…） |
+| `/radiopage/list/{地区ID}` | 该地区的电台（`radioList`，网络台 20 条；`page` 参数无效，只有一页） |
+| `/radio/channels/{id}/from/{时间戳}` | 某台从某时刻起的节目：`channelInfo`（台名/封面）+ `current`（正在播的节目） |
 
 `audioUrl` 形如 `https://audio.qtfm.cn/audiostream/redirect/{cid}/{pid}?device_id=MOBILESITE&t=…&sign=…`，302 到 `https://vohwod-client-sign.qtfm.cn/m4a/….m4a?auth_key=…`。插件在 `stream` 里先手动跟一次 302 拿到最终地址（拿不到就把原地址交出去，让应用自己跟），这样播放器拿到的就是可拖动的整段 m4a。
+
+直播地址不走 `webapi`：`https://lhttp-hw.qtfm.cn/live/{频道ID}/64k.mp3?app_id=web`，直接回 `audio/mpeg`（`32k.mp3` 是 404，只有 `64k` 可用）。
 
 ## 为什么要转码（以及为什么要装 ffmpeg）
 
@@ -125,6 +148,7 @@ ffmpeg -i <签名 m4a> -vn -c:a aac -b:a 64k -movflags +faststart <数据目录>
 - 需要本机装好 **ffmpeg**，并在应用设置里允许本插件运行它（`permissions.process` 申请的就是 `ffmpeg`）。没装或没授权时，插件会抛 `setup` 错误，并在后面带上具体原因。
 - 桌面应用的 PATH 里通常没有 `/opt/homebrew/bin`，所以插件会按顺序试：设置里的「ffmpeg 路径」→ `ffmpeg`（PATH）→ `/opt/homebrew/bin/ffmpeg`、`/usr/local/bin/ffmpeg`、`/usr/bin/ffmpeg`（Windows 则是 `ffmpeg.exe` 和 `C:\ffmpeg\bin\ffmpeg.exe`）。都找不到就把完整路径填进设置里的「ffmpeg 路径」。
 - 想退回直连，把设置里的「转码播放」填 `0`，但那样大部分内容会重新报 SBR 错。
+- **直播电台不转码**：那一路本来就是 MP3。
 
 ## 播放地址怎么给
 
@@ -132,6 +156,7 @@ ffmpeg -i <签名 m4a> -vn -c:a aac -b:a 64k -movflags +faststart <数据目录>
 
 - Windows：`file:///C:/Users/<用户>/AppData/Roaming/.../qingting-0.m4a`（盘符前有斜杠、反斜杠全转正斜杠、空格转义成 `%20`）
 - macOS / Linux：`file:///Users/<用户>/Library/Application%20Support/.../qingting-0.m4a`
+- 直播电台不落地成文件，直接给 `https://lhttp-hw.qtfm.cn/live/{频道ID}/64k.mp3?app_id=web`，应用边下边播。
 
 写成 `file://C:\Users\...` 会让 `url.Parse` 直接报 `invalid port ":\\Users..." after host`，播不出来。
 
@@ -146,7 +171,7 @@ ffmpeg -i <签名 m4a> -vn -c:a aac -b:a 64k -movflags +faststart <数据目录>
 
 - **付费/VIP 节目**：接口不给 `audioUrl`，插件会抛 `unavailable`，提示「这个节目需要购买后才能收听」。扫码登录后请求会带上账号，但能不能播仍取决于这个账号本身买没买；插件不做支付。
 - 转码后会有一点音质损失（源本身 24kbps，转到 64k AAC-LC 只是去掉 SBR，不会变好）。
-- **直播电台**（`type: live`）没有做——直播流是另一套 HLS，且不是点播语义。
+- **直播电台**：只有「广播」页里那些（MP3 直连）；直播的节目单只有当前一段（`current`），历史节目单没做。
 - 蜻蜓的 API 没有歌词和评论，所以插件没有 `lyrics`、`comments`。
 - 频道节目列表只有 `player/channels/{id}/pages/{n}` 可分页，`channels/{id}/programs` 永远只给最新 30 期，所以插件用前者。
 - 历史最多存 100 条，满了就从最老的开始丢；旧版本留下的记录没有时间，会统一归到「更早」。
@@ -155,4 +180,4 @@ ffmpeg -i <签名 m4a> -vn -c:a aac -b:a 64k -movflags +faststart <数据目录>
 
 ## 开发备注
 
-`plugin.json` 里申请的域名是 `webapi.qingting.fm`、`api2.qingting.fm`、`audio.qtfm.cn`、`*.qtfm.cn`、`user.qtfm.cn`——少了任何一个，`fetch` 都到不了（`user.qtfm.cn` 是扫码登录用的）。
+`plugin.json` 里申请的域名是 `webapi.qingting.fm`、`api2.qingting.fm`、`audio.qtfm.cn`、`lhttp-hw.qtfm.cn`、`*.qtfm.cn`、`user.qtfm.cn`——少了任何一个，`fetch` 都到不了（`user.qtfm.cn` 是扫码登录用的，`lhttp-hw.qtfm.cn` 是直播流用的）。
