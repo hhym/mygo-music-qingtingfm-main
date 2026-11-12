@@ -32,5 +32,13 @@
   "Nothing played yet": "还没有播放记录",
   "Today": "今天",
   "Yesterday": "昨天",
-  "Earlier": "更早"
+  "Earlier": "更早",
+  "Radio": "广播",
+  "Popular stations": "热门电台",
+  "By region": "按地区",
+  "Stations": "电台",
+  "On air": "正在直播",
+  "Live radio": "直播",
+  "No such station": "没有这个电台",
+  "No stations here": "这个地区还没有电台"
 }

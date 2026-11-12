@@ -1,7 +1,7 @@
 {
   "id": "qingting",
   "name": "蜻蜓FM",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "minAppVersion": "0.1.8",
   "main": "index.js",
   "playback": "stream",
@@ -10,6 +10,7 @@
       "webapi.qingting.fm",
       "api2.qingting.fm",
       "audio.qtfm.cn",
+      "lhttp-hw.qtfm.cn",
       "*.qtfm.cn",
       "user.qtfm.cn"
     ],
@@ -48,6 +49,11 @@
       "title": "排行榜",
       "page": "rank",
       "icon": "chart"
+    },
+    {
+      "title": "广播",
+      "page": "radio",
+      "icon": "radio"
     },
     {
       "title": "历史",
