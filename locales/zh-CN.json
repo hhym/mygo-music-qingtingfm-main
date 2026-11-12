@@ -14,5 +14,17 @@
   "Trending": "热门",
   "What everyone is listening to this week": "本周大家都在听",
   "转码播放": "转码播放",
-  "ffmpeg 路径": "ffmpeg 路径"
+  "ffmpeg 路径": "ffmpeg 路径",
+  "Scan with the 蜻蜓FM app": "用蜻蜓FM App 扫码登录",
+  "Scanned — confirm it on your phone": "扫到了，在手机上确认一下",
+  "The code has expired. Try again.": "二维码过期了，请再试一次",
+  "Couldn't get a code": "取不到登录二维码",
+  "The sign-in service gave no key": "登录服务没有返回 qr_skey",
+  "No QR window": "这个版本没有扫码窗口",
+  "Sign in to see your page": "登录后才有这一页",
+  "Subscribed": "我订阅的频道",
+  "Liked episodes": "收藏的节目",
+  "My 蜻蜓FM": "我的蜻蜓FM",
+  "蜻蜓FM account": "蜻蜓FM 账号",
+  "蜻蜓FM listener": "蜻蜓听众"
 }

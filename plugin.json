@@ -1,7 +1,7 @@
 {
   "id": "qingting",
   "name": "蜻蜓FM",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "minAppVersion": "0.1.8",
   "main": "index.js",
   "playback": "stream",
@@ -10,7 +10,8 @@
       "webapi.qingting.fm",
       "api2.qingting.fm",
       "audio.qtfm.cn",
-      "*.qtfm.cn"
+      "*.qtfm.cn",
+      "user.qtfm.cn"
     ],
     "process": [
       "ffmpeg",
