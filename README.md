@@ -2,6 +2,8 @@
 
 把蜻蜓FM 的频道当作播客节目、频道里的每期音频当作剧集，接进 MyGo Music 的原生播放器。
 
+> 使用前请先阅读 [DISCLAIMER.md](DISCLAIMER.md)：使用的是蜻蜓FM 的非官方接口，本插件按「现状」提供、不做任何担保。
+
 ## 从 GitHub 装
 
 仓库：<https://github.com/hhym/mygo-music-qingtingfm-main>（`plugin.json` 在根目录，应用取默认分支最新提交）
@@ -122,6 +124,13 @@ ffmpeg -i <签名 m4a> -vn -c:a aac -b:a 64k -movflags +faststart <数据目录>
 - macOS / Linux：`file:///Users/<用户>/Library/Application%20Support/.../qingting-0.m4a`
 
 写成 `file://C:\Users\...` 会让 `url.Parse` 直接报 `invalid port ":\\Users..." after host`，播不出来。
+
+## 声明
+
+完整内容见 [DISCLAIMER.md](DISCLAIMER.md)，要点：
+
+- **音源接口**：用的是蜻蜓FM 网页端/移动端的**非官方接口**，与蜻蜓FM 无任何隶属或授权关系；音频与文字版权归蜻蜓FM 及主播、版权方；仅供个人学习研究，不绕过付费/会员/DRM，不做批量抓取与二次分发。
+- **本软件**：按「现状」提供，不附带任何担保；需要在本机运行 ffmpeg 转码，风险与合规由使用者自负；作者不承担因使用本插件造成的任何损失。
 
 ## 已知限制
 
