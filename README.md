@@ -41,8 +41,34 @@ plugins/qingting/
 | `like` / `likeEpisode` / `isLiked` / `liked` | 本地存储 | 收藏的节目记在插件自己的 storage 里 |
 | `played` / `recent` | 本地存储 | 最近播放 50 期 |
 | `show` 的 `episodeCount` | `program_count` | 频道里的节目总数 |
+| `signIn` / `signOut` / `account` / `browse` 的 `me` 页 | `user.qtfm.cn` 扫码登录 | 见下面「扫码登录」 |
 
 专辑、艺人、歌单、电台、评论、歌词这些蜻蜓FM 没有对应东西的接口一律不导出，应用会自动隐藏对应入口。
+
+## 扫码登录
+
+「设置 → 账号 → 登录」会弹出一个二维码，用手机上的蜻蜓FM App 扫一下就登上了。
+
+流程（都是网页版自己用的接口，非官方）：
+
+| 步骤 | 接口 |
+| --- | --- |
+| 取二维码 | `GET https://user.qtfm.cn/u2/api/v4/users/qrcode/generate` → `code_id`，同时在 `Set-Cookie` 里给一个 `qr_skey`（JWT，8 分钟有效） |
+| 二维码内容 | `https://scan.qtfm.cn/home?title=授权登录&requires_login=true&code_id=<code_id>` |
+| 轮询状态 | `GET https://user.qtfm.cn/u2/api/v4/users/qrcode/status_query?code_id=<code_id>`，带 `Cookie: qr_skey=<qr_skey>` |
+| 登录成功 | `qrcode_status` 变成 `authorize`，同时下发 `access_token` / `refresh_token` / `qingting_id` / `expires_in` |
+
+插件自己不存 cookie，所以 `qr_skey` 是从生成接口的 `Set-Cookie` 里读出来，再手动放进状态查询的 `Cookie` 头；二维码也是插件自己按上面的格式拼的字符串（接口只给一张 PNG，而应用要的是能编码的文本，PNG 解出来的内容就是这一串）。
+
+状态有三个：`init`（等扫）→ `scanning`（扫到了，等手机上确认，窗口里的提示会跟着变）→ `authorize`（登录完成 → 存 token）。`errorno` 为 200 表示二维码已过期，插件会以 `signIn` 错误提示重来；整轮最长等 5 分钟。
+
+登录之后：
+
+- 所有 `webapi.qingting.fm` 的请求都会带上 `Cookie: access_token=…; qingting_id=…`（移动网页就是这么带凭据的）。
+- 「我的」页（账号菜单打开）显示昵称、蜻蜓 ID，以及本地订阅的频道和收藏的节目。
+- 昵称和头像来自 `GET https://user.qtfm.cn/u2/api/v4/user/{qingting_id}?mode=vital&device_id=MOBILESITE&qingting_id=…`；拿不到就退回「蜻蜓听众」，不影响其他功能。
+
+**说明白一点**：登录能让插件带上你的账号身份去请求（付费/VIP 节目的 `audioUrl` 是否下发，取决于账号本身的购买状态和接口策略）。插件不做支付，也不代替蜻蜓FM 的会员体系。
 
 ## 数据怎么对应
 
@@ -99,13 +125,14 @@ ffmpeg -i <签名 m4a> -vn -c:a aac -b:a 64k -movflags +faststart <数据目录>
 
 ## 已知限制
 
-- **付费/VIP 节目**：接口不给 `audioUrl`，插件会抛 `unavailable`，提示「这个节目需要购买后才能收听」。在蜻蜓FM 里买过之后，同一个节目能不能播取决于接口是否下发地址，插件本身不处理账号。
+- **付费/VIP 节目**：接口不给 `audioUrl`，插件会抛 `unavailable`，提示「这个节目需要购买后才能收听」。扫码登录后请求会带上账号，但能不能播仍取决于这个账号本身买没买；插件不做支付。
 - 转码后会有一点音质损失（源本身 24kbps，转到 64k AAC-LC 只是去掉 SBR，不会变好）。
 - **直播电台**（`type: live`）没有做——直播流是另一套 HLS，且不是点播语义。
 - 蜻蜓的 API 没有歌词和评论，所以插件没有 `lyrics`、`comments`。
 - 频道节目列表只有 `player/channels/{id}/pages/{n}` 可分页，`channels/{id}/programs` 永远只给最新 30 期，所以插件用前者。
 - 这是非官方接口，蜻蜓改字段或加签名时插件需要跟着改。
+- 扫码登录是网页版的接口，扫码、确认这两步动作得在手机上完成（本应用里只显示二维码和提示）。
 
 ## 开发备注
 
-`plugin.json` 里申请的域名是 `webapi.qingting.fm`、`api2.qingting.fm`、`audio.qtfm.cn`、`*.qtfm.cn`——少了任何一个，`fetch` 都到不了。
+`plugin.json` 里申请的域名是 `webapi.qingting.fm`、`api2.qingting.fm`、`audio.qtfm.cn`、`*.qtfm.cn`、`user.qtfm.cn`——少了任何一个，`fetch` 都到不了（`user.qtfm.cn` 是扫码登录用的）。
