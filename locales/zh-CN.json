@@ -40,5 +40,10 @@
   "On air": "正在直播",
   "Live radio": "直播",
   "No such station": "没有这个电台",
-  "No stations here": "这个地区还没有电台"
+  "No stations here": "这个地区还没有电台",
+  "Clear history": "清空历史记录",
+  "Can't be undone": "删了就找不回来",
+  "Clear it": "确认清空",
+  "Back to history": "返回历史",
+  "History cleared": "已清空"
 }
