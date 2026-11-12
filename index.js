@@ -209,6 +209,8 @@ export async function home() {
 export async function browse({ page }) {
   if (page === "me") return myPage();
   if (page === "history") return historyPage();
+  if (page === "history/clear") return clearHistoryPage();
+  if (page === "history/clear/yes") return clearHistory();
   if (page === "radio") return radioPage();
 
   const region = /^radio\/(\d+)$/.exec(page || "");
@@ -508,11 +510,30 @@ function dayLabel(at) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function historyPage() {
-  const items = [...load("recent", [])]
+function historyItems() {
+  return [...load("recent", [])]
     .filter(Boolean)
     .sort((a, b) => (b.at || 0) - (a.at || 0));
+}
+
+function historyPage() {
+  const items = historyItems();
   const sections = [];
+
+  // Clearing takes two clicks: this row opens a page that asks, and only the
+  // page under it deletes, so one stray click can't wipe the list.
+  if (items.length) {
+    sections.push({
+      links: [
+        {
+          title: t("Clear history"),
+          subtitle: `${items.length} · ${t("Can't be undone")}`,
+          page: "history/clear",
+        },
+      ],
+    });
+  }
+
   for (const it of items) {
     const title = dayLabel(it.at);
     const last = sections[sections.length - 1];
@@ -523,6 +544,34 @@ function historyPage() {
     title: t("History"),
     subtitle: items.length ? `${t("Recently played")} · ${items.length}` : t("Nothing played yet"),
     sections,
+  };
+}
+
+// What the row above opens: a page that asks, and the page under it that
+// deletes. Only the history goes; the liked list and the subscriptions stay.
+function clearHistoryPage() {
+  const n = historyItems().length;
+  return {
+    title: t("Clear history"),
+    subtitle: n ? `${n} · ${t("Can't be undone")}` : t("Nothing played yet"),
+    sections: [
+      {
+        links: [
+          { title: t("Clear it"), page: "history/clear/yes" },
+          { title: t("Back to history"), page: "history" },
+        ],
+      },
+    ],
+  };
+}
+
+function clearHistory() {
+  const n = historyItems().length;
+  save("recent", []);
+  return {
+    title: t("History"),
+    subtitle: n ? `${t("History cleared")} · ${n}` : t("Nothing played yet"),
+    sections: [],
   };
 }
 
